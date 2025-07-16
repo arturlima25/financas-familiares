@@ -216,7 +216,7 @@ elif aba_atual == "Dashboard":
             Despesa=('Valor', lambda x: x[df.loc[x.index, 'Tipo'] == 'Despesa'].sum())
         ).reset_index()
         df_saldo['Saldo'] = df_saldo['Receita'] - df_saldo['Despesa']
-        df_saldo['Data'] = pd.to_datetime(df_saldo[['Ano', 'Mês']].assign(DIA=1))
+        df_saldo['Data'] = pd.to_datetime(df_saldo.rename(columns={'Ano':'year', 'Mês':'month'}).assign(day=1)[['year','month','day']])
 
         if not df_saldo.empty:
             chart_linha = alt.Chart(df_saldo).transform_fold(
