@@ -10,7 +10,7 @@ from datetime import date
 @st.cache_resource
 def conectar_sheets():
     escopo = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-    credenciais_dict = st.secrets["gcp_service_account"]
+    credenciais_dict = dict(st.secrets["gcp_service_account"])  # cria cópia mutável
     credenciais_dict["private_key"] = credenciais_dict["private_key"].replace("\\n", "\n")
     creds = ServiceAccountCredentials.from_json_keyfile_dict(credenciais_dict, escopo)
     cliente = gspread.authorize(creds)
