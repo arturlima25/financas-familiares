@@ -3,6 +3,7 @@ import pandas as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import date
+import calendar
 
 # -------------------------------
 # Conectar ao Google Sheets
@@ -118,21 +119,63 @@ elif aba_atual == "Dashboard":
         st.warning("Nenhuma transação registrada ainda.")
     else:
         df['Valor'] = pd.to_numeric(df['Valor'])
-        total_receitas = df[df['Tipo'] == 'Receita']['Valor'].sum()
-        total_despesas = df[df['Tipo'] == 'Despesa']['Valor'].sum()
-        saldo = total_receitas - total_despesas
+        df['Data'] = pd.to_datetime(df['Data'])
 
-        st.metric("Total de Receitas", f"R$ {total_receitas:,.2f}")
-        st.metric("Total de Despesas", f"R$ {total_despesas:,.2f}")
-        st.metric("Saldo Atual", f"R$ {saldo:,.2f}")
+        df['Ano'] = df['Data'].dt.year
+        df['Mês'] = df['Data'].dt.month
+        df['Nome_Mês'] = df['Data'].dt.month.apply(lambda m: calendar.month_name[m])
 
-        st.subheader("💡 Despesas por Categoria")
-        despesas_cat = df[df['Tipo'] == 'Despesa'].groupby("Categoria")["Valor"].sum()
-        st.bar_chart(despesas_cat)
+        anos_disponiveis = sorted(df['Ano'].unique(), reverse=True)
+        meses_disponiveis = sorted(df['Mês'].unique())
+        nomes_meses = ['Todos os meses'] + [calendar.month_name[m] for m in meses_disponiveis]
 
-        st.subheader("📂 Despesas por Subcategoria")
-        despesas_sub = df[df['Tipo'] == 'Despesa'].groupby("Subcategoria")["Valor"].sum()
-        st.bar_chart(despesas_sub)
+        st.subheader("🎯 Filtros")
+
+        col1, col2, col3 = st.columns([1, 1, 1])
+        with col1:
+            ano_selecionado = st.selectbox("Ano", anos_disponiveis, key="filtro_ano")
+        with col2:
+            mes_nome_selecionado = st.selectbox("Mês", nomes_meses, index=0, key="filtro_mes")
+
+        with col3:
+            if st.button("🔄 Limpar Filtros"):
+                st.experimental_rerun()
+
+        # Aplicar filtro
+        if mes_nome_selecionado != "Todos os meses":
+            mes_num = list(calendar.month_name).index(mes_nome_selecionado)
+            df_filtrado = df[(df['Ano'] == ano_selecionado) & (df['Mês'] == mes_num)]
+        else:
+            df_filtrado = df[df['Ano'] == ano_selecionado]
+
+        if df_filtrado.empty:
+            st.warning("Não há transações para os filtros selecionados.")
+        else:
+            total_receitas = df_filtrado[df_filtrado['Tipo'] == 'Receita']['Valor'].sum()
+            total_despesas = df_filtrado[df_filtrado['Tipo'] == 'Despesa']['Valor'].sum()
+            saldo = total_receitas - total_despesas
+
+            st.metric("Total de Receitas", f"R$ {total_receitas:,.2f}")
+            st.metric("Total de Despesas", f"R$ {total_despesas:,.2f}")
+            st.metric("Saldo no Período", f"R$ {saldo:,.2f}")
+
+            st.markdown("### 📈 Gráficos de Receitas e Despesas")
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                st.subheader("💰 Receitas por Categoria")
+                receitas_cat = df_filtrado[df_filtrado['Tipo'] == 'Receita'].groupby("Categoria")["Valor"].sum()
+                st.bar_chart(receitas_cat)
+
+            with col2:
+                st.subheader("💸 Despesas por Categoria")
+                despesas_cat = df_filtrado[df_filtrado['Tipo'] == 'Despesa'].groupby("Categoria")["Valor"].sum()
+                st.bar_chart(despesas_cat)
+
+            st.subheader("🔍 Despesas por Subcategoria")
+            despesas_sub = df_filtrado[df_filtrado['Tipo'] == 'Despesa'].groupby("Subcategoria")["Valor"].sum()
+            st.bar_chart(despesas_sub)
 
 elif aba_atual == "Gerenciar categorias":
     st.header("🛠 Gerenciar Categorias e Subcategorias")
