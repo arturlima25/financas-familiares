@@ -171,57 +171,45 @@ elif aba_atual == "Dashboard":
 
         st.divider()
 
-        # Função para criar gráfico de barras horizontais com rótulo de texto
-        def barra_com_rotulo(data, x_col, y_col, cor, titulo):
-            base = alt.Chart(data).encode(
-                y=alt.Y(f"{y_col}:N", sort='-x'),
-                x=alt.X(f"{x_col}:Q", title="Valor (R$)")
-            )
-
-            barras = base.mark_bar(color=cor)
-            texto = base.mark_text(
-                align='left',
-                baseline='middle',
-                dx=3,  # distância do texto da barra
-                fontSize=12,
-                fontWeight='bold'
-            ).encode(text=alt.Text(f"{x_col}:Q", format=",.2f"))
-
-            chart = (barras + texto).properties(height=300, title=titulo).configure_axis(
-                labelFontSize=12,
-                titleFontSize=14
-            )
-            return chart
-
-        # Receitas por Categoria
+        # 🔹 Gráfico de barras horizontais (Receitas por Categoria)
         st.subheader("💰 Receitas por Categoria")
         receitas_cat = df[df['Tipo'] == 'Receita'].groupby("Categoria")["Valor"].sum().reset_index()
         if not receitas_cat.empty:
-            st.altair_chart(barra_com_rotulo(receitas_cat, "Valor", "Categoria", "green", "Receitas por Categoria"), use_container_width=True)
+            chart_receitas = alt.Chart(receitas_cat).mark_bar(color='green').encode(
+                x=alt.X("Valor:Q", title="Valor (R$)"),
+                y=alt.Y("Categoria:N", sort='-x'),
+                tooltip=["Categoria", "Valor"]
+            ).properties(height=300)
+            st.altair_chart(chart_receitas, use_container_width=True)
         else:
             st.info("Sem receitas para este filtro.")
 
-        # Despesas por Categoria
+        # 🔹 Gráfico de barras horizontais (Despesas por Categoria)
         st.subheader("💸 Despesas por Categoria")
         despesas_cat = df[df['Tipo'] == 'Despesa'].groupby("Categoria")["Valor"].sum().reset_index()
         if not despesas_cat.empty:
-            st.altair_chart(barra_com_rotulo(despesas_cat, "Valor", "Categoria", "red", "Despesas por Categoria"), use_container_width=True)
+            chart_despesas = alt.Chart(despesas_cat).mark_bar(color='red').encode(
+                x=alt.X("Valor:Q", title="Valor (R$)"),
+                y=alt.Y("Categoria:N", sort='-x'),
+                tooltip=["Categoria", "Valor"]
+            ).properties(height=300)
+            st.altair_chart(chart_despesas, use_container_width=True)
         else:
             st.info("Sem despesas para este filtro.")
 
-        # Gráfico de pizza (Despesas por Categoria)
+        # 🔹 Gráfico de pizza (Despesas por Categoria)
         if not despesas_cat.empty:
             st.subheader("🥧 Distribuição das Despesas")
             chart_pizza = alt.Chart(despesas_cat).mark_arc().encode(
                 theta="Valor:Q",
                 color="Categoria:N",
-                tooltip=["Categoria", alt.Tooltip("Valor", format=".2f")]
+                tooltip=["Categoria", "Valor"]
             ).properties(height=300)
             st.altair_chart(chart_pizza, use_container_width=True)
 
         st.divider()
 
-        # Linha do tempo: saldo por mês
+        # 🔹 Linha do tempo: saldo por mês
         st.subheader("📈 Evolução Mensal do Saldo")
         df_saldo = df.groupby(['Ano', 'Mês']).agg(
             Receita=('Valor', lambda x: x[df.loc[x.index, 'Tipo'] == 'Receita'].sum()),
@@ -238,25 +226,34 @@ elif aba_atual == "Dashboard":
                 x=alt.X('Data:T', title='Data'),
                 y=alt.Y('Valor:Q', title='Valor (R$)'),
                 color='Tipo:N',
-                tooltip=["Tipo:N", alt.Tooltip("Valor", format=",.2f"), "Data:T"]
+                tooltip=["Tipo:N", "Valor:Q", "Data:T"]
             ).properties(height=400)
             st.altair_chart(chart_linha, use_container_width=True)
 
         st.divider()
 
-        # Subcategorias Receitas
+        # 🔹 Subcategorias
         st.subheader("📂 Receitas por Subcategoria")
         receitas_sub = df[df['Tipo'] == 'Receita'].groupby("Subcategoria")["Valor"].sum().reset_index()
         if not receitas_sub.empty:
-            st.altair_chart(barra_com_rotulo(receitas_sub, "Valor", "Subcategoria", "green", "Receitas por Subcategoria"), use_container_width=True)
+            chart_sub_receitas = alt.Chart(receitas_sub).mark_bar(color='green').encode(
+                x=alt.X("Valor:Q", title="Valor (R$)"),
+                y=alt.Y("Subcategoria:N", sort='-x'),
+                tooltip=["Subcategoria", "Valor"]
+            ).properties(height=300)
+            st.altair_chart(chart_sub_receitas, use_container_width=True)
         else:
             st.info("Sem subcategorias de receita.")
 
-        # Subcategorias Despesas
         st.subheader("📂 Despesas por Subcategoria")
         despesas_sub = df[df['Tipo'] == 'Despesa'].groupby("Subcategoria")["Valor"].sum().reset_index()
         if not despesas_sub.empty:
-            st.altair_chart(barra_com_rotulo(despesas_sub, "Valor", "Subcategoria", "red", "Despesas por Subcategoria"), use_container_width=True)
+            chart_sub_despesas = alt.Chart(despesas_sub).mark_bar(color='red').encode(
+                x=alt.X("Valor:Q", title="Valor (R$)"),
+                y=alt.Y("Subcategoria:N", sort='-x'),
+                tooltip=["Subcategoria", "Valor"]
+            ).properties(height=300)
+            st.altair_chart(chart_sub_despesas, use_container_width=True)
         else:
             st.info("Sem subcategorias de despesa.")
 
