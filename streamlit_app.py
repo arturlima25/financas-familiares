@@ -21,7 +21,7 @@ def conectar_planilha():
     creds = ServiceAccountCredentials.from_json_keyfile_dict(credenciais_dict, escopo)
     cliente = gspread.authorize(creds)
     planilha = cliente.open("FinancasDomesticas")
-    return planilha.sheet1
+    return planilha
 
 # -------------------------------
 # Carregar dados da planilha
