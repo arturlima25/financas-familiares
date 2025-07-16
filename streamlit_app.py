@@ -82,6 +82,7 @@ if aba_atual == "Registrar":
     categorias = carregar_categorias(planilha)
 
     data = st.date_input("Data", value=date.today())
+    st.write("Data selecionada:", data.strftime("%d/%m/%Y"))
     tipo = st.radio("Tipo", ["Receita", "Despesa"])
 
     # Adicionando opção vazia no selectbox de categoria
