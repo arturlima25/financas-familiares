@@ -8,15 +8,14 @@ from datetime import date
 # Conectar ao Google Sheets
 # -------------------------------
 @st.cache_resource
-def conectar_sheets():
+def conectar_planilha():
     escopo = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-    credenciais_dict = dict(st.secrets["gcp_service_account"])  # cria cópia mutável
+    credenciais_dict = st.secrets["gcp_service_account"]
     credenciais_dict["private_key"] = credenciais_dict["private_key"].replace("\\n", "\n")
     creds = ServiceAccountCredentials.from_json_keyfile_dict(credenciais_dict, escopo)
     cliente = gspread.authorize(creds)
     planilha = cliente.open("FinancasDomesticas")
-    aba = planilha.sheet1
-    return aba
+    return planilha
 
 # -------------------------------
 # Carregar dados da planilha
@@ -26,11 +25,35 @@ def carregar_dados(aba):
     return pd.DataFrame(dados)
 
 # -------------------------------
+# Carregar categorias e subcategorias da aba 'Categorias'
+# -------------------------------
+@st.cache_data(ttl=60)
+def carregar_categorias(aba_categorias):
+    dados = aba_categorias.get_all_records()
+    categorias_dict = {}
+    for linha in dados:
+        cat = linha['Categoria'].strip()
+        subcat = linha['Subcategoria'].strip() if linha['Subcategoria'] else ""
+        if cat not in categorias_dict:
+            categorias_dict[cat] = []
+        if subcat and subcat not in categorias_dict[cat]:
+            categorias_dict[cat].append(subcat)
+    return categorias_dict
+
+# -------------------------------
 # Salvar nova transação
 # -------------------------------
 def salvar_transacao(aba, data, tipo, categoria, subcategoria, descricao, valor):
-    data_str = data.strftime("%d/%m/%Y")
-    aba.append_row([data_str, tipo, categoria, subcategoria, descricao.strip(), float(valor)])
+    aba.append_row([str(data), tipo, categoria, subcategoria, descricao, float(valor)])
+
+# -------------------------------
+# Adicionar categoria ou subcategoria na aba Categorias
+# -------------------------------
+def adicionar_categoria(aba_categorias, categoria):
+    aba_categorias.append_row([categoria, ""])
+
+def adicionar_subcategoria(aba_categorias, categoria, subcategoria):
+    aba_categorias.append_row([categoria, subcategoria])
 
 # -------------------------------
 # App Streamlit
@@ -38,20 +61,17 @@ def salvar_transacao(aba, data, tipo, categoria, subcategoria, descricao, valor)
 st.set_page_config(page_title="Controle Financeiro Familiar", layout="centered")
 st.title("💸 Controle Financeiro Familiar")
 
-aba_atual = st.sidebar.radio("Escolha uma opção", ["Registrar", "Dashboard"])
-sheet = conectar_sheets()
+planilha = conectar_planilha()
+aba_transacoes = planilha.sheet1
+aba_categorias = planilha.worksheet("Categorias")
 
-categorias = {
-    "Alimentação": ["Supermercado", "Restaurante", "Delivery"],
-    "Transporte": ["Combustível", "Uber", "Manutenção"],
-    "Moradia": ["Aluguel", "Energia", "Internet"],
-    "Salário": ["Mensal", "Freelance"],
-    "Lazer": ["Cinema", "Viagem", "Assinaturas"],
-    "Outros": ["Farmácia", "Presentes", "Vestuário"]
-}
+# Menu lateral
+aba_atual = st.sidebar.radio("Escolha uma opção", ["Registrar", "Dashboard", "Gerenciar categorias"])
 
 if aba_atual == "Registrar":
     st.header("📌 Adicionar transação")
+
+    categorias = carregar_categorias(aba_categorias)
 
     data = st.date_input("Data", value=date.today())
     tipo = st.radio("Tipo", ["Receita", "Despesa"])
@@ -61,20 +81,20 @@ if aba_atual == "Registrar":
     valor = st.number_input("Valor", min_value=0.0, format="%.2f")
 
     if st.button("Salvar"):
-        if descricao.strip() != "" and valor > 0:
-            salvar_transacao(sheet, data, tipo, categoria, subcategoria, descricao, valor)
+        if descricao and valor > 0:
+            salvar_transacao(aba_transacoes, data, tipo, categoria, subcategoria, descricao, valor)
             st.success("Transação registrada com sucesso!")
         else:
             st.error("Preencha todos os campos antes de salvar.")
 
 elif aba_atual == "Dashboard":
     st.header("📊 Visão Geral")
-    df = carregar_dados(sheet)
+    df = carregar_dados(aba_transacoes)
 
     if df.empty:
         st.warning("Nenhuma transação registrada ainda.")
     else:
-        df['Valor'] = pd.to_numeric(df['Valor'], errors='coerce').fillna(0)
+        df['Valor'] = pd.to_numeric(df['Valor'])
         total_receitas = df[df['Tipo'] == 'Receita']['Valor'].sum()
         total_despesas = df[df['Tipo'] == 'Despesa']['Valor'].sum()
         saldo = total_receitas - total_despesas
@@ -90,3 +110,42 @@ elif aba_atual == "Dashboard":
         st.subheader("📂 Despesas por Subcategoria")
         despesas_sub = df[df['Tipo'] == 'Despesa'].groupby("Subcategoria")["Valor"].sum()
         st.bar_chart(despesas_sub)
+
+elif aba_atual == "Gerenciar categorias":
+    st.header("🛠 Gerenciar Categorias e Subcategorias")
+
+    categorias = carregar_categorias(aba_categorias)
+
+    st.subheader("➕ Adicionar Categoria")
+    nova_categoria = st.text_input("Nova Categoria", key="cat_input")
+    if st.button("Adicionar Categoria"):
+        nova_categoria = nova_categoria.strip()
+        if nova_categoria:
+            if nova_categoria not in categorias:
+                adicionar_categoria(aba_categorias, nova_categoria)
+                st.success(f"Categoria '{nova_categoria}' adicionada!")
+                st.experimental_rerun()  # Recarrega a página para atualizar as categorias
+            else:
+                st.error("Categoria já existe.")
+        else:
+            st.error("Digite uma categoria válida.")
+
+    st.markdown("---")
+
+    st.subheader("➕ Adicionar Subcategoria")
+    if categorias:
+        categoria_para_sub = st.selectbox("Selecione Categoria para nova Subcategoria", list(categorias.keys()))
+        nova_subcategoria = st.text_input("Nova Subcategoria", key="subcat_input")
+        if st.button("Adicionar Subcategoria"):
+            nova_subcategoria = nova_subcategoria.strip()
+            if nova_subcategoria:
+                if nova_subcategoria not in categorias[categoria_para_sub]:
+                    adicionar_subcategoria(aba_categorias, categoria_para_sub, nova_subcategoria)
+                    st.success(f"Subcategoria '{nova_subcategoria}' adicionada à categoria '{categoria_para_sub}'!")
+                    st.experimental_rerun()  # Recarrega a página para atualizar as categorias
+                else:
+                    st.error("Subcategoria já existe para essa categoria.")
+            else:
+                st.error("Digite uma subcategoria válida.")
+    else:
+        st.info("Não há categorias para adicionar subcategoria. Adicione uma categoria primeiro.")
