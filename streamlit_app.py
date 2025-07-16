@@ -21,7 +21,7 @@ def conectar_planilha():
     creds = ServiceAccountCredentials.from_json_keyfile_dict(credenciais_dict, escopo)
     cliente = gspread.authorize(creds)
     planilha = cliente.open("FinancasDomesticas")
-    return planilha.sheet1
+    return planilha.worksheet("Transacoes")
 
 # -------------------------------
 # Carregar dados da planilha
@@ -68,7 +68,7 @@ st.set_page_config(page_title="Controle Financeiro Familiar", layout="centered")
 st.title("💸 Controle Financeiro Familiar")
 
 planilha = conectar_planilha()
-aba_transacoes = planilha.sheet1
+aba_transacoes = planilha.worksheet("Transacoes")
 aba_categorias = planilha.worksheet("Categorias")
 
 # Menu lateral
