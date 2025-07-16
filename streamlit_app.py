@@ -34,17 +34,17 @@ def carregar_dados(aba):
 # Carregar categorias e subcategorias da aba 'Categorias'
 # -------------------------------
 @st.cache_data(ttl=60)
-def carregar_categorias(_planilha):
-    aba_categorias = _planilha.worksheet("Categorias")
+def carregar_categorias(aba_categorias, tipo):
     dados = aba_categorias.get_all_records()
     categorias_dict = {}
     for linha in dados:
-        cat = linha['Categoria'].strip()
-        subcat = linha['Subcategoria'].strip() if linha['Subcategoria'] else ""
-        if cat not in categorias_dict:
-            categorias_dict[cat] = []
-        if subcat and subcat not in categorias_dict[cat]:
-            categorias_dict[cat].append(subcat)
+        if linha.get('Tipo', '').strip().lower() == tipo.lower():
+            cat = linha['Categoria'].strip()
+            subcat = linha['Subcategoria'].strip() if linha['Subcategoria'] else ""
+            if cat not in categorias_dict:
+                categorias_dict[cat] = []
+            if subcat and subcat not in categorias_dict[cat]:
+                categorias_dict[cat].append(subcat)
     return categorias_dict
 
 # -------------------------------
@@ -79,11 +79,13 @@ aba_atual = st.sidebar.radio("Escolha uma opção", ["Registrar", "Dashboard", "
 if aba_atual == "Registrar":
     st.header("📌 Adicionar transação")
 
-    categorias = carregar_categorias(planilha)
-
     data = st.date_input("Data", value=date.today())
     st.write("Data selecionada:", data.strftime("%d/%m/%Y"))
+
     tipo = st.radio("Tipo", ["Receita", "Despesa"])
+
+    # Agora carrega as categorias com base no tipo
+    categorias = carregar_categorias(aba_categorias, tipo)
 
     # Adicionando opção vazia no selectbox de categoria
     lista_categorias = [""] + list(categorias.keys())
@@ -94,6 +96,7 @@ if aba_atual == "Registrar":
         lista_subcategorias = [""] + categorias.get(categoria, [])
     else:
         lista_subcategorias = [""]
+
     subcategoria = st.selectbox("Subcategoria", lista_subcategorias, index=0)
 
     descricao = st.text_input("Descrição")
@@ -105,6 +108,7 @@ if aba_atual == "Registrar":
             st.success("Transação registrada com sucesso!")
         else:
             st.error("Preencha todos os campos antes de salvar.")
+
 
 elif aba_atual == "Dashboard":
     st.header("📊 Visão Geral")
