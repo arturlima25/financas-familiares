@@ -137,7 +137,10 @@ elif aba_atual == "Dashboard":
 elif aba_atual == "Gerenciar categorias":
     st.header("🛠 Gerenciar Categorias e Subcategorias")
 
-    categorias = carregar_categorias(planilha)
+    tipo_categoria = st.radio("Tipo de categoria", ["Receita", "Despesa"], horizontal=True)
+
+    # Carrega as categorias com base no tipo selecionado
+    categorias = carregar_categorias(_aba_categorias=aba_categorias, tipo=tipo_categoria)
 
     st.subheader("➕ Adicionar Categoria")
     nova_categoria = st.text_input("Nova Categoria", key="cat_input")
@@ -145,9 +148,9 @@ elif aba_atual == "Gerenciar categorias":
         nova_categoria = nova_categoria.strip()
         if nova_categoria:
             if nova_categoria not in categorias:
-                adicionar_categoria(aba_categorias, nova_categoria)
-                st.success(f"Categoria '{nova_categoria}' adicionada!")
-                st.experimental_rerun()  # Recarrega a página para atualizar as categorias
+                adicionar_categoria(aba_categorias, nova_categoria, tipo_categoria)
+                st.success(f"Categoria '{nova_categoria}' adicionada como {tipo_categoria}!")
+                st.experimental_rerun()
             else:
                 st.error("Categoria já existe.")
         else:
@@ -157,7 +160,11 @@ elif aba_atual == "Gerenciar categorias":
 
     st.subheader("➕ Adicionar Subcategoria")
     if categorias:
-        categoria_para_sub = st.selectbox("Selecione Categoria para nova Subcategoria", list(categorias.keys()))
+        categoria_para_sub = st.selectbox(
+            "Selecione Categoria para nova Subcategoria",
+            list(categorias.keys()),
+            key="subcat_select"
+        )
         nova_subcategoria = st.text_input("Nova Subcategoria", key="subcat_input")
         if st.button("Adicionar Subcategoria"):
             nova_subcategoria = nova_subcategoria.strip()
@@ -165,10 +172,11 @@ elif aba_atual == "Gerenciar categorias":
                 if nova_subcategoria not in categorias[categoria_para_sub]:
                     adicionar_subcategoria(aba_categorias, categoria_para_sub, nova_subcategoria)
                     st.success(f"Subcategoria '{nova_subcategoria}' adicionada à categoria '{categoria_para_sub}'!")
-                    st.experimental_rerun()  # Recarrega a página para atualizar as categorias
+                    st.experimental_rerun()
                 else:
                     st.error("Subcategoria já existe para essa categoria.")
             else:
                 st.error("Digite uma subcategoria válida.")
     else:
         st.info("Não há categorias para adicionar subcategoria. Adicione uma categoria primeiro.")
+
