@@ -34,7 +34,8 @@ def carregar_dados(aba):
 # Carregar categorias e subcategorias da aba 'Categorias'
 # -------------------------------
 @st.cache_data(ttl=60)
-def carregar_categorias(aba_categorias):
+def carregar_categorias(planilha):
+    aba_categorias = planilha.worksheet("Categorias")
     dados = aba_categorias.get_all_records()
     categorias_dict = {}
     for linha in dados:
@@ -69,6 +70,7 @@ st.title("💸 Controle Financeiro Familiar")
 
 planilha = conectar_planilha()
 aba_transacoes = planilha.sheet1
+# Note que aba_categorias só será usada para operações de escrita, pode ser obtida aqui
 aba_categorias = planilha.worksheet("Categorias")
 
 # Menu lateral
@@ -77,12 +79,18 @@ aba_atual = st.sidebar.radio("Escolha uma opção", ["Registrar", "Dashboard", "
 if aba_atual == "Registrar":
     st.header("📌 Adicionar transação")
 
-    categorias = carregar_categorias(aba_categorias)
+    categorias = carregar_categorias(planilha)
 
     data = st.date_input("Data", value=date.today())
     tipo = st.radio("Tipo", ["Receita", "Despesa"])
     categoria = st.selectbox("Categoria", list(categorias.keys()))
-    subcategoria = st.selectbox("Subcategoria", categorias[categoria])
+    # Caso não haja subcategoria, evitar erro passando lista vazia ou com string vazia
+    subcategorias = categorias.get(categoria, [])
+    if subcategorias:
+        subcategoria = st.selectbox("Subcategoria", subcategorias)
+    else:
+        subcategoria = ""
+
     descricao = st.text_input("Descrição")
     valor = st.number_input("Valor", min_value=0.0, format="%.2f")
 
@@ -120,7 +128,7 @@ elif aba_atual == "Dashboard":
 elif aba_atual == "Gerenciar categorias":
     st.header("🛠 Gerenciar Categorias e Subcategorias")
 
-    categorias = carregar_categorias(aba_categorias)
+    categorias = carregar_categorias(planilha)
 
     st.subheader("➕ Adicionar Categoria")
     nova_categoria = st.text_input("Nova Categoria", key="cat_input")
