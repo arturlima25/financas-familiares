@@ -4,6 +4,7 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import date
 import calendar
+import altair as alt
 
 # -------------------------------
 # Conectar ao Google Sheets
@@ -112,70 +113,149 @@ if aba_atual == "Registrar":
 
 
 elif aba_atual == "Dashboard":
+    import altair as alt  # certifique-se de ter isso no topo do seu script
+
     st.header("📊 Visão Geral")
     df = carregar_dados(aba_transacoes)
 
     if df.empty:
         st.warning("Nenhuma transação registrada ainda.")
     else:
-        df['Valor'] = pd.to_numeric(df['Valor'])
-        df['Data'] = pd.to_datetime(df['Data'])
-
+        # Prepara os dados
+        df['Data'] = pd.to_datetime(df['Data'], errors='coerce', dayfirst=True)
+        df = df.dropna(subset=['Data'])
         df['Ano'] = df['Data'].dt.year
         df['Mês'] = df['Data'].dt.month
-        df['Nome_Mês'] = df['Data'].dt.month.apply(lambda m: calendar.month_name[m])
 
-        anos_disponiveis = sorted(df['Ano'].unique(), reverse=True)
-        meses_disponiveis = sorted(df['Mês'].unique())
-        nomes_meses = ['Todos os meses'] + [calendar.month_name[m] for m in meses_disponiveis]
+        nomes_meses_pt = {
+            1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril",
+            5: "Maio", 6: "Junho", 7: "Julho", 8: "Agosto",
+            9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro"
+        }
+        df['Nome Mês'] = df['Mês'].map(nomes_meses_pt)
+        df['Valor'] = pd.to_numeric(df['Valor'])
 
-        st.subheader("🎯 Filtros")
-
-        col1, col2, col3 = st.columns([1, 1, 1])
-        with col1:
-            ano_selecionado = st.selectbox("Ano", anos_disponiveis, key="filtro_ano")
-        with col2:
-            mes_nome_selecionado = st.selectbox("Mês", nomes_meses, index=0, key="filtro_mes")
-
-        with col3:
-            if st.button("🔄 Limpar Filtros"):
-                st.experimental_rerun()
-
-        # Aplicar filtro
-        if mes_nome_selecionado != "Todos os meses":
-            mes_num = list(calendar.month_name).index(mes_nome_selecionado)
-            df_filtrado = df[(df['Ano'] == ano_selecionado) & (df['Mês'] == mes_num)]
-        else:
-            df_filtrado = df[df['Ano'] == ano_selecionado]
-
-        if df_filtrado.empty:
-            st.warning("Não há transações para os filtros selecionados.")
-        else:
-            total_receitas = df_filtrado[df_filtrado['Tipo'] == 'Receita']['Valor'].sum()
-            total_despesas = df_filtrado[df_filtrado['Tipo'] == 'Despesa']['Valor'].sum()
-            saldo = total_receitas - total_despesas
-
-            st.metric("Total de Receitas", f"R$ {total_receitas:,.2f}")
-            st.metric("Total de Despesas", f"R$ {total_despesas:,.2f}")
-            st.metric("Saldo no Período", f"R$ {saldo:,.2f}")
-
-            st.markdown("### 📈 Gráficos de Receitas e Despesas")
-
-            col1, col2 = st.columns(2)
-
+        # Filtros
+        anos = sorted(df['Ano'].unique())
+        meses = sorted(df['Mês'].unique())
+        with st.expander("🔍 Filtros"):
+            col1, col2, col3 = st.columns([3, 3, 2])
             with col1:
-                st.subheader("💰 Receitas por Categoria")
-                receitas_cat = df_filtrado[df_filtrado['Tipo'] == 'Receita'].groupby("Categoria")["Valor"].sum()
-                st.bar_chart(receitas_cat)
-
+                ano_filtro = st.selectbox("Ano", ['Todos'] + anos, index=0, key="ano_filtro")
             with col2:
-                st.subheader("💸 Despesas por Categoria")
-                despesas_cat = df_filtrado[df_filtrado['Tipo'] == 'Despesa'].groupby("Categoria")["Valor"].sum()
-                st.bar_chart(despesas_cat)
+                nomes_meses = ['Todos'] + [nomes_meses_pt[m] for m in meses]
+                mes_filtro = st.selectbox("Mês", nomes_meses, index=0, key="mes_filtro")
+            with col3:
+                if st.button("❌ Limpar filtros"):
+                    st.session_state['ano_filtro'] = 'Todos'
+                    st.session_state['mes_filtro'] = 'Todos'
+                    st.experimental_rerun()
 
-            st.subheader("🔍 Despesas por Subcategoria")
-            despesas_sub = df_filtrado[df_filtrado['Tipo'] == 'Despesa'].groupby("Subcategoria")["Valor"].sum()
-            st.bar_chart(despesas_sub)
+        # Aplicar filtros
+        if st.session_state['ano_filtro'] != 'Todos':
+            df = df[df['Ano'] == st.session_state['ano_filtro']]
+        if st.session_state['mes_filtro'] != 'Todos':
+            num_mes = [k for k, v in nomes_meses_pt.items() if v == st.session_state['mes_filtro']][0]
+            df = df[df['Mês'] == num_mes]
+
+        # Métricas principais
+        total_receitas = df[df['Tipo'] == 'Receita']['Valor'].sum()
+        total_despesas = df[df['Tipo'] == 'Despesa']['Valor'].sum()
+        saldo = total_receitas - total_despesas
+
+        st.subheader("📌 Visão Geral")
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Receitas", f"R$ {total_receitas:,.2f}")
+        col2.metric("Despesas", f"R$ {total_despesas:,.2f}")
+        col3.metric("Saldo", f"R$ {saldo:,.2f}")
+
+        st.divider()
+
+        # 🔹 Gráfico de barras horizontais (Receitas por Categoria)
+        st.subheader("💰 Receitas por Categoria")
+        receitas_cat = df[df['Tipo'] == 'Receita'].groupby("Categoria")["Valor"].sum().reset_index()
+        if not receitas_cat.empty:
+            chart_receitas = alt.Chart(receitas_cat).mark_bar(color='green').encode(
+                x=alt.X("Valor:Q", title="Valor (R$)"),
+                y=alt.Y("Categoria:N", sort='-x'),
+                tooltip=["Categoria", "Valor"]
+            ).properties(height=300)
+            st.altair_chart(chart_receitas, use_container_width=True)
+        else:
+            st.info("Sem receitas para este filtro.")
+
+        # 🔹 Gráfico de barras horizontais (Despesas por Categoria)
+        st.subheader("💸 Despesas por Categoria")
+        despesas_cat = df[df['Tipo'] == 'Despesa'].groupby("Categoria")["Valor"].sum().reset_index()
+        if not despesas_cat.empty:
+            chart_despesas = alt.Chart(despesas_cat).mark_bar(color='red').encode(
+                x=alt.X("Valor:Q", title="Valor (R$)"),
+                y=alt.Y("Categoria:N", sort='-x'),
+                tooltip=["Categoria", "Valor"]
+            ).properties(height=300)
+            st.altair_chart(chart_despesas, use_container_width=True)
+        else:
+            st.info("Sem despesas para este filtro.")
+
+        # 🔹 Gráfico de pizza (Despesas por Categoria)
+        if not despesas_cat.empty:
+            st.subheader("🥧 Distribuição das Despesas")
+            chart_pizza = alt.Chart(despesas_cat).mark_arc().encode(
+                theta="Valor:Q",
+                color="Categoria:N",
+                tooltip=["Categoria", "Valor"]
+            ).properties(height=300)
+            st.altair_chart(chart_pizza, use_container_width=True)
+
+        st.divider()
+
+        # 🔹 Linha do tempo: saldo por mês
+        st.subheader("📈 Evolução Mensal do Saldo")
+        df_saldo = df.groupby(['Ano', 'Mês']).agg(
+            Receita=('Valor', lambda x: x[df.loc[x.index, 'Tipo'] == 'Receita'].sum()),
+            Despesa=('Valor', lambda x: x[df.loc[x.index, 'Tipo'] == 'Despesa'].sum())
+        ).reset_index()
+        df_saldo['Saldo'] = df_saldo['Receita'] - df_saldo['Despesa']
+        df_saldo['Data'] = pd.to_datetime(df_saldo[['Ano', 'Mês']].assign(DIA=1))
+
+        if not df_saldo.empty:
+            chart_linha = alt.Chart(df_saldo).transform_fold(
+                ['Receita', 'Despesa', 'Saldo'],
+                as_=['Tipo', 'Valor']
+            ).mark_line(point=True).encode(
+                x=alt.X('Data:T', title='Data'),
+                y=alt.Y('Valor:Q', title='Valor (R$)'),
+                color='Tipo:N',
+                tooltip=["Tipo:N", "Valor:Q", "Data:T"]
+            ).properties(height=400)
+            st.altair_chart(chart_linha, use_container_width=True)
+
+        st.divider()
+
+        # 🔹 Subcategorias
+        st.subheader("📂 Receitas por Subcategoria")
+        receitas_sub = df[df['Tipo'] == 'Receita'].groupby("Subcategoria")["Valor"].sum().reset_index()
+        if not receitas_sub.empty:
+            chart_sub_receitas = alt.Chart(receitas_sub).mark_bar(color='green').encode(
+                x=alt.X("Valor:Q", title="Valor (R$)"),
+                y=alt.Y("Subcategoria:N", sort='-x'),
+                tooltip=["Subcategoria", "Valor"]
+            ).properties(height=300)
+            st.altair_chart(chart_sub_receitas, use_container_width=True)
+        else:
+            st.info("Sem subcategorias de receita.")
+
+        st.subheader("📂 Despesas por Subcategoria")
+        despesas_sub = df[df['Tipo'] == 'Despesa'].groupby("Subcategoria")["Valor"].sum().reset_index()
+        if not despesas_sub.empty:
+            chart_sub_despesas = alt.Chart(despesas_sub).mark_bar(color='red').encode(
+                x=alt.X("Valor:Q", title="Valor (R$)"),
+                y=alt.Y("Subcategoria:N", sort='-x'),
+                tooltip=["Subcategoria", "Valor"]
+            ).properties(height=300)
+            st.altair_chart(chart_sub_despesas, use_container_width=True)
+        else:
+            st.info("Sem subcategorias de despesa.")
 
 elif aba_atual == "Gerenciar categorias":
     st.header("🛠 Gerenciar Categorias e Subcategorias")
