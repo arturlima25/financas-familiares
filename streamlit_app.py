@@ -10,12 +10,18 @@ from datetime import date
 @st.cache_resource
 def conectar_planilha():
     escopo = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-    credenciais_dict = st.secrets["gcp_service_account"]
-    credenciais_dict["private_key"] = credenciais_dict["private_key"].replace("\\n", "\n")
+
+    credenciais_original = st.secrets["gcp_service_account"]
+    # Faz uma cópia do dicionário para modificar
+    credenciais_dict = dict(credenciais_original)
+
+    # Agora pode substituir os \n na private_key sem erro
+    credenciais_dict["private_key"] = credenciais_dict["private_key"].replace('\\n', '\n')
+
     creds = ServiceAccountCredentials.from_json_keyfile_dict(credenciais_dict, escopo)
     cliente = gspread.authorize(creds)
     planilha = cliente.open("FinancasDomesticas")
-    return planilha
+    return planilha.sheet1
 
 # -------------------------------
 # Carregar dados da planilha
