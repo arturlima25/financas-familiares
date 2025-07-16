@@ -34,8 +34,8 @@ def carregar_dados(aba):
 # Carregar categorias e subcategorias da aba 'Categorias'
 # -------------------------------
 @st.cache_data(ttl=60)
-def carregar_categorias(aba_categorias, tipo):
-    dados = aba_categorias.get_all_records()
+def carregar_categorias(_aba_categorias, tipo):
+    dados = _aba_categorias.get_all_records()
     categorias_dict = {}
     for linha in dados:
         if linha.get('Tipo', '').strip().lower() == tipo.lower():
