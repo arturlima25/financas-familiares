@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import gspread
-from google.oauth2.service_account import Credentials
+from oauth2client.service_account import ServiceAccountCredentials
 from datetime import date
 
 # -------------------------------
@@ -9,23 +9,10 @@ from datetime import date
 # -------------------------------
 @st.cache_resource
 def conectar_sheets():
-    escopo = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    
-    # Pegando credenciais do secrets.toml
-    credenciais_dict = {
-        "type": st.secrets["type"],
-        "project_id": st.secrets["project_id"],
-        "private_key_id": st.secrets["private_key_id"],
-        "private_key": st.secrets["private_key"].replace("\\n", "\n"),
-        "client_email": st.secrets["client_email"],
-        "client_id": st.secrets["client_id"],
-        "auth_uri": st.secrets["auth_uri"],
-        "token_uri": st.secrets["token_uri"],
-        "auth_provider_x509_cert_url": st.secrets["auth_provider_x509_cert_url"],
-        "client_x509_cert_url": st.secrets["client_x509_cert_url"]
-    }
-
-    creds = Credentials.from_service_account_info(credenciais_dict, scopes=escopo)
+    escopo = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
+    credenciais_dict = st.secrets["gcp_service_account"]
+    credenciais_dict["private_key"] = credenciais_dict["private_key"].replace("\\n", "\n")
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(credenciais_dict, escopo)
     cliente = gspread.authorize(creds)
     planilha = cliente.open("FinancasDomesticas")
     aba = planilha.sheet1
@@ -42,7 +29,8 @@ def carregar_dados(aba):
 # Salvar nova transação
 # -------------------------------
 def salvar_transacao(aba, data, tipo, categoria, subcategoria, descricao, valor):
-    aba.append_row([str(data), tipo, categoria, subcategoria, descricao, float(valor)])
+    data_str = data.strftime("%d/%m/%Y")
+    aba.append_row([data_str, tipo, categoria, subcategoria, descricao.strip(), float(valor)])
 
 # -------------------------------
 # App Streamlit
@@ -53,7 +41,6 @@ st.title("💸 Controle Financeiro Familiar")
 aba_atual = st.sidebar.radio("Escolha uma opção", ["Registrar", "Dashboard"])
 sheet = conectar_sheets()
 
-# Categorias e Subcategorias
 categorias = {
     "Alimentação": ["Supermercado", "Restaurante", "Delivery"],
     "Transporte": ["Combustível", "Uber", "Manutenção"],
@@ -74,7 +61,7 @@ if aba_atual == "Registrar":
     valor = st.number_input("Valor", min_value=0.0, format="%.2f")
 
     if st.button("Salvar"):
-        if descricao and valor > 0:
+        if descricao.strip() != "" and valor > 0:
             salvar_transacao(sheet, data, tipo, categoria, subcategoria, descricao, valor)
             st.success("Transação registrada com sucesso!")
         else:
@@ -87,7 +74,7 @@ elif aba_atual == "Dashboard":
     if df.empty:
         st.warning("Nenhuma transação registrada ainda.")
     else:
-        df['Valor'] = pd.to_numeric(df['Valor'])
+        df['Valor'] = pd.to_numeric(df['Valor'], errors='coerce').fillna(0)
         total_receitas = df[df['Tipo'] == 'Receita']['Valor'].sum()
         total_despesas = df[df['Tipo'] == 'Despesa']['Valor'].sum()
         saldo = total_receitas - total_despesas
