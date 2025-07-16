@@ -83,19 +83,23 @@ if aba_atual == "Registrar":
 
     data = st.date_input("Data", value=date.today())
     tipo = st.radio("Tipo", ["Receita", "Despesa"])
-    categoria = st.selectbox("Categoria", list(categorias.keys()))
-    # Caso não haja subcategoria, evitar erro passando lista vazia ou com string vazia
-    subcategorias = categorias.get(categoria, [])
-    if subcategorias:
-        subcategoria = st.selectbox("Subcategoria", subcategorias)
+
+    # Adicionando opção vazia no selectbox de categoria
+    lista_categorias = [""] + list(categorias.keys())
+    categoria = st.selectbox("Categoria", lista_categorias, index=0)
+
+    # Se categoria estiver vazia, subcategoria também fica vazia
+    if categoria:
+        lista_subcategorias = [""] + categorias.get(categoria, [])
     else:
-        subcategoria = ""
+        lista_subcategorias = [""]
+    subcategoria = st.selectbox("Subcategoria", lista_subcategorias, index=0)
 
     descricao = st.text_input("Descrição")
-    valor = st.number_input("Valor", min_value=0.0, format="%.2f")
+    valor = st.number_input("Valor", min_value=0.0, format="%.2f", value=0.0)
 
     if st.button("Salvar"):
-        if descricao and valor > 0:
+        if descricao and valor > 0 and categoria and subcategoria:
             salvar_transacao(aba_transacoes, data, tipo, categoria, subcategoria, descricao, valor)
             st.success("Transação registrada com sucesso!")
         else:
