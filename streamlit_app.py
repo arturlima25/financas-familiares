@@ -34,8 +34,8 @@ def carregar_dados(aba):
 # Carregar categorias e subcategorias da aba 'Categorias'
 # -------------------------------
 @st.cache_data(ttl=60)
-def carregar_categorias(planilha):
-    aba_categorias = planilha.worksheet("Categorias")
+def carregar_categorias(_planilha):
+    aba_categorias = _planilha.worksheet("Categorias")
     dados = aba_categorias.get_all_records()
     categorias_dict = {}
     for linha in dados:
