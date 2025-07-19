@@ -12,14 +12,9 @@ import altair as alt
 @st.cache_resource
 def conectar_planilha():
     escopo = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-
     credenciais_original = st.secrets["gcp_service_account"]
-    # Faz uma cópia do dicionário para modificar
     credenciais_dict = dict(credenciais_original)
-
-    # Agora pode substituir os \n na private_key sem erro
     credenciais_dict["private_key"] = credenciais_dict["private_key"].replace('\\n', '\n')
-
     creds = ServiceAccountCredentials.from_json_keyfile_dict(credenciais_dict, escopo)
     cliente = gspread.authorize(creds)
     planilha = cliente.open("FinancasDomesticas")
@@ -40,7 +35,6 @@ def carregar_categorias(_aba_categorias, tipo):
     dados = _aba_categorias.get_all_records()
     categorias_dict = {}
     for linha in dados:
-        # Verifica se 'Tipo' existe na linha e corresponde ao tipo desejado
         if linha.get('Tipo', '').strip().lower() == tipo.lower():
             cat = linha['Categoria'].strip()
             subcat = linha['Subcategoria'].strip() if linha['Subcategoria'] else ""
@@ -109,7 +103,6 @@ if aba_atual == "Registrar":
         else:
             st.error("Preencha todos os campos antes de salvar.")
 
-
 elif aba_atual == "Dashboard":
     st.header("📊 Visão Geral")
     df = carregar_dados(aba_transacoes)
@@ -117,7 +110,6 @@ elif aba_atual == "Dashboard":
     if df.empty:
         st.warning("Nenhuma transação registrada ainda.")
     else:
-        # Prepara os dados
         df['Data'] = pd.to_datetime(df['Data'], errors='coerce', dayfirst=True)
         df = df.dropna(subset=['Data'])
         df['Ano'] = df['Data'].dt.year
@@ -131,7 +123,6 @@ elif aba_atual == "Dashboard":
         df['Nome Mês'] = df['Mês'].map(nomes_meses_pt)
         df['Valor'] = pd.to_numeric(df['Valor'])
 
-        # Filtros
         anos = sorted(df['Ano'].unique(), reverse=True)
         meses_disponiveis = sorted(df['Mês'].unique())
         nomes_meses_disponiveis = [nomes_meses_pt[m] for m in meses_disponiveis]
@@ -155,7 +146,6 @@ elif aba_atual == "Dashboard":
                     st.session_state['mes_filtro'] = 'Todos'
                     st.experimental_rerun()
 
-        # Aplicar filtros ao DataFrame
         df_filtrado = df.copy()
         if st.session_state['ano_filtro'] != 'Todos':
             df_filtrado = df_filtrado[df_filtrado['Ano'] == st.session_state['ano_filtro']]
@@ -164,10 +154,8 @@ elif aba_atual == "Dashboard":
             if num_mes:
                 df_filtrado = df_filtrado[df_filtrado['Mês'] == num_mes[0]]
             else:
-                # Se o mês não for encontrado (ex: filtro de mês inválido), esvazie o df_filtrado
-                df_filtrado = pd.DataFrame(columns=df.columns) # Manter as colunas para evitar erros de schema
+                df_filtrado = pd.DataFrame(columns=df.columns)
 
-        # --- Métricas principais ---
         st.subheader("📌 Visão Geral")
         if not df_filtrado.empty:
             total_receitas = df_filtrado[df_filtrado['Tipo'] == 'Receita']['Valor'].sum()
@@ -179,15 +167,13 @@ elif aba_atual == "Dashboard":
             col2.metric("Despesas", f"R$ {total_despesas:,.2f}")
             col3.metric("Saldo", f"R$ {saldo:,.2f}")
         else:
-            st.info("Sem dados para o filtro selecionado. Ajuste os filtros ou adicione transações.")
-            # Definir métricas como zero quando não há dados
+            st.info("Sem dados para o filtro selecionado.")
             total_receitas = 0
             total_despesas = 0
             saldo = 0
 
         st.divider()
 
-        # --- Gráfico de barras horizontais (Receitas por Categoria) ---
         st.subheader("💰 Receitas por Categoria")
         receitas_cat = df_filtrado[df_filtrado['Tipo'] == 'Receita'].groupby("Categoria")["Valor"].sum().reset_index()
         if not receitas_cat.empty:
@@ -200,7 +186,6 @@ elif aba_atual == "Dashboard":
         else:
             st.info("Sem receitas para este filtro.")
 
-        # --- Gráfico de barras horizontais (Despesas por Categoria) ---
         st.subheader("💸 Despesas por Categoria")
         despesas_cat = df_filtrado[df_filtrado['Tipo'] == 'Despesa'].groupby("Categoria")["Valor"].sum().reset_index()
         if not despesas_cat.empty:
@@ -215,40 +200,6 @@ elif aba_atual == "Dashboard":
 
         st.divider()
 
-        # --- Linha do tempo: saldo por mês ---
-        st.subheader("📈 Evolução Mensal do Saldo")
-        # Garante que df_saldo só é calculado se df_filtrado não estiver vazio
-        if not df_filtrado.empty:
-            df_saldo = df_filtrado.groupby(['Ano', 'Mês'], observed=True).agg(
-                Receita=('Valor', lambda x: x[df_filtrado.loc[x.index, 'Tipo'] == 'Receita'].sum()),
-                Despesa=('Valor', lambda x: x[df_filtrado.loc[x.index, 'Tipo'] == 'Despesa'].sum())
-            ).reset_index()
-            df_saldo['Saldo'] = df_saldo['Receita'] - df_saldo['Despesa']
-            df_saldo['Nome Mês'] = df_saldo['Mês'].map(nomes_meses_pt)
-            df_saldo['Data_Eixo'] = pd.to_datetime(df_saldo['Ano'].astype(str) + '-' + df_saldo['Mês'].astype(str) + '-01')
-
-            # Verifica novamente se df_saldo não ficou vazio após o groupby (ex: se só há um tipo de transação)
-            if not df_saldo.empty:
-                chart_linha = alt.Chart(df_saldo).transform_fold(
-                    ['Receita', 'Despesa', 'Saldo'],
-                    as_=['Tipo', 'Valor']
-                ).mark_line(point=True).encode(
-                    x=alt.X('Data_Eixo:T', title='Data', axis=alt.Axis(format="%b/%Y")),
-                    y=alt.Y('Valor:Q', title='Valor (R$)'),
-                    color=alt.Color('Tipo:N',
-                                    scale=alt.Scale(domain=['Receita', 'Despesa', 'Saldo'],
-                                                    range=['green', 'red', 'blue'])),
-                    tooltip=["Tipo:N", alt.Tooltip("Valor", format=".2f"), alt.Tooltip("Data_Eixo", format="%b/%Y", title="Mês/Ano")]
-                ).properties(height=400)
-                st.altair_chart(chart_linha, use_container_width=True)
-            else:
-                st.info("Sem dados de saldo para este filtro para exibir na linha do tempo.")
-        else:
-            st.info("Sem dados de saldo para este filtro para exibir na linha do tempo.")
-
-        st.divider()
-
-        # --- Subcategorias ---
         st.subheader("📂 Receitas por Subcategoria")
         receitas_sub = df_filtrado[df_filtrado['Tipo'] == 'Receita'].groupby("Subcategoria")["Valor"].sum().reset_index()
         if not receitas_sub.empty:
@@ -275,7 +226,6 @@ elif aba_atual == "Dashboard":
 
         st.divider()
 
-        # --- Tabela de Todas as Movimentações ---
         st.subheader("📋 Todas as Movimentações")
         if not df_filtrado.empty:
             colunas_tabela = ['Data', 'Tipo', 'Categoria', 'Subcategoria', 'Descrição', 'Valor']
@@ -285,7 +235,6 @@ elif aba_atual == "Dashboard":
             st.dataframe(df_exibicao, hide_index=True, use_container_width=True)
         else:
             st.info("Nenhuma movimentação para este filtro.")
-
 
 elif aba_atual == "Gerenciar categorias":
     st.header("🛠 Gerenciar Categorias e Subcategorias")
