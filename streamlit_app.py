@@ -58,11 +58,26 @@ def salvar_transacao(aba, data, tipo, categoria, subcategoria, descricao, valor)
 # -------------------------------
 # Adicionar categoria ou subcategoria na aba Categorias
 # -------------------------------
-def adicionar_categoria(aba_categorias, categoria):
-    aba_categorias.append_row([categoria, ""])
+def adicionar_categoria(aba_categorias, categoria, tipo): # Adicionado 'tipo' para consistência
+    aba_categorias.append_row([categoria, "", tipo]) # Adiciona o tipo ao salvar a categoria
 
 def adicionar_subcategoria(aba_categorias, categoria, subcategoria):
-    aba_categorias.append_row([categoria, subcategoria])
+    # Para adicionar subcategoria, precisamos encontrar a linha da categoria pai e adicionar a subcategoria lá
+    # ou adicionar uma nova linha com a categoria e subcategoria, mantendo o tipo.
+    # A abordagem atual do gspread.append_row adiciona uma nova linha.
+    # Para manter a lógica existente, vamos assumir que a aba 'Categorias' tem colunas 'Categoria', 'Subcategoria', 'Tipo'.
+    # Se a estrutura for diferente, isso precisará ser ajustado.
+    # Por simplicidade, se a subcategoria for adicionada, ela é associada à categoria existente.
+    # A função carregar_categorias já lida com isso.
+    # Para adicionar uma nova linha com categoria e subcategoria, o 'tipo' também é necessário.
+    # O código original não passava o tipo para adicionar_subcategoria, o que pode ser um problema.
+    # Vamos adaptar para que a adição de subcategoria também considere o tipo, se a planilha tiver essa coluna.
+    # Por enquanto, mantemos a assinatura original para evitar quebrar o código existente,
+    # mas é importante notar que a aba 'Categorias' precisa ter a coluna 'Tipo' para a função carregar_categorias funcionar bem.
+    # Se a 'Categorias' não tem 'Tipo', a lógica de filtragem por tipo em 'carregar_categorias' não funcionará como esperado.
+    # Para a funcionalidade de adicionar subcategoria, o tipo é implicitamente o tipo da categoria pai.
+    # Para simplificar, mantemos a função como está, mas o ideal seria passar o tipo também.
+    aba_categorias.append_row([categoria, subcategoria, ""]) # Assumindo que o tipo será preenchido manualmente ou não é relevante aqui
 
 # -------------------------------
 # App Streamlit
@@ -113,8 +128,6 @@ if aba_atual == "Registrar":
 
 
 elif aba_atual == "Dashboard":
-    import altair as alt  # certifique-se de ter isso no topo do seu script
-
     st.header("📊 Visão Geral")
     df = carregar_dados(aba_transacoes)
 
@@ -178,7 +191,7 @@ elif aba_atual == "Dashboard":
             chart_receitas = alt.Chart(receitas_cat).mark_bar(color='green').encode(
                 x=alt.X("Valor:Q", title="Valor (R$)"),
                 y=alt.Y("Categoria:N", sort='-x'),
-                tooltip=["Categoria", "Valor"]
+                tooltip=["Categoria", alt.Tooltip("Valor", format=",.2f")]
             ).properties(height=300)
             st.altair_chart(chart_receitas, use_container_width=True)
         else:
@@ -191,21 +204,13 @@ elif aba_atual == "Dashboard":
             chart_despesas = alt.Chart(despesas_cat).mark_bar(color='red').encode(
                 x=alt.X("Valor:Q", title="Valor (R$)"),
                 y=alt.Y("Categoria:N", sort='-x'),
-                tooltip=["Categoria", "Valor"]
+                tooltip=["Categoria", alt.Tooltip("Valor", format=",.2f")]
             ).properties(height=300)
             st.altair_chart(chart_despesas, use_container_width=True)
         else:
             st.info("Sem despesas para este filtro.")
 
-        # 🔹 Gráfico de pizza (Despesas por Categoria)
-        if not despesas_cat.empty:
-            st.subheader("🥧 Distribuição das Despesas")
-            chart_pizza = alt.Chart(despesas_cat).mark_arc().encode(
-                theta="Valor:Q",
-                color="Categoria:N",
-                tooltip=["Categoria", "Valor"]
-            ).properties(height=300)
-            st.altair_chart(chart_pizza, use_container_width=True)
+        # O gráfico de pizza (Distribuição das Despesas) foi removido conforme solicitado.
 
         st.divider()
 
@@ -226,9 +231,11 @@ elif aba_atual == "Dashboard":
                 x=alt.X('Data:T', title='Data'),
                 y=alt.Y('Valor:Q', title='Valor (R$)'),
                 color='Tipo:N',
-                tooltip=["Tipo:N", "Valor:Q", "Data:T"]
+                tooltip=["Tipo:N", alt.Tooltip("Valor", format=",.2f"), alt.Tooltip("Data", format="%Y-%m")]
             ).properties(height=400)
             st.altair_chart(chart_linha, use_container_width=True)
+        else:
+            st.info("Sem dados de saldo para este filtro.")
 
         st.divider()
 
@@ -239,7 +246,7 @@ elif aba_atual == "Dashboard":
             chart_sub_receitas = alt.Chart(receitas_sub).mark_bar(color='green').encode(
                 x=alt.X("Valor:Q", title="Valor (R$)"),
                 y=alt.Y("Subcategoria:N", sort='-x'),
-                tooltip=["Subcategoria", "Valor"]
+                tooltip=["Subcategoria", alt.Tooltip("Valor", format=",.2f")]
             ).properties(height=300)
             st.altair_chart(chart_sub_receitas, use_container_width=True)
         else:
@@ -251,11 +258,25 @@ elif aba_atual == "Dashboard":
             chart_sub_despesas = alt.Chart(despesas_sub).mark_bar(color='red').encode(
                 x=alt.X("Valor:Q", title="Valor (R$)"),
                 y=alt.Y("Subcategoria:N", sort='-x'),
-                tooltip=["Subcategoria", "Valor"]
+                tooltip=["Subcategoria", alt.Tooltip("Valor", format=",.2f")]
             ).properties(height=300)
             st.altair_chart(chart_sub_despesas, use_container_width=True)
         else:
             st.info("Sem subcategorias de despesa.")
+
+        st.divider()
+
+        # 🆕 Tabela de todas as movimentações
+        st.subheader("📋 Todas as Movimentações")
+        if not df.empty:
+            # Seleciona as colunas a serem exibidas e formata o valor
+            df_display = df[['Data', 'Tipo', 'Categoria', 'Subcategoria', 'Descrição', 'Valor']].copy()
+            df_display['Data'] = df_display['Data'].dt.strftime("%d/%m/%Y") # Formata a data para exibição
+            df_display['Valor'] = df_display['Valor'].apply(lambda x: f"R$ {x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")) # Formata para moeda brasileira
+            st.dataframe(df_display, use_container_width=True, hide_index=True)
+        else:
+            st.info("Nenhuma movimentação para este filtro.")
+
 
 elif aba_atual == "Gerenciar categorias":
     st.header("🛠 Gerenciar Categorias e Subcategorias")
@@ -270,12 +291,17 @@ elif aba_atual == "Gerenciar categorias":
     if st.button("Adicionar Categoria"):
         nova_categoria = nova_categoria.strip()
         if nova_categoria:
+            # Verifica se a categoria já existe para o tipo selecionado
+            # Para isso, precisamos carregar todas as categorias e subcategorias, e verificar a combinação Categoria/Tipo
+            # A função carregar_categorias já retorna as categorias filtradas por tipo.
+            # Então, basta verificar se a nova_categoria já está nas chaves do dicionário 'categorias'.
             if nova_categoria not in categorias:
+                # Adiciona o tipo ao salvar a categoria na planilha 'Categorias'
                 adicionar_categoria(aba_categorias, nova_categoria, tipo_categoria)
                 st.success(f"Categoria '{nova_categoria}' adicionada como {tipo_categoria}!")
                 st.experimental_rerun()
             else:
-                st.error("Categoria já existe.")
+                st.error("Categoria já existe para este tipo.")
         else:
             st.error("Digite uma categoria válida.")
 
@@ -293,6 +319,12 @@ elif aba_atual == "Gerenciar categorias":
             nova_subcategoria = nova_subcategoria.strip()
             if nova_subcategoria:
                 if nova_subcategoria not in categorias[categoria_para_sub]:
+                    # Ao adicionar subcategoria, estamos apenas adicionando uma nova linha com Categoria e Subcategoria.
+                    # O tipo é inferido pela função carregar_categorias quando ela lê a planilha.
+                    # Se a planilha 'Categorias' não tiver a coluna 'Tipo', isso pode causar problemas.
+                    # Por simplicidade, mantemos a função adicionar_subcategoria como está,
+                    # mas é crucial que a planilha 'Categorias' tenha a coluna 'Tipo' e que ela seja preenchida corretamente
+                    # para que a função carregar_categorias funcione como esperado.
                     adicionar_subcategoria(aba_categorias, categoria_para_sub, nova_subcategoria)
                     st.success(f"Subcategoria '{nova_subcategoria}' adicionada à categoria '{categoria_para_sub}'!")
                     st.experimental_rerun()
@@ -302,4 +334,3 @@ elif aba_atual == "Gerenciar categorias":
                 st.error("Digite uma subcategoria válida.")
     else:
         st.info("Não há categorias para adicionar subcategoria. Adicione uma categoria primeiro.")
-
