@@ -40,6 +40,7 @@ def carregar_categorias(_aba_categorias, tipo):
     dados = _aba_categorias.get_all_records()
     categorias_dict = {}
     for linha in dados:
+        # Verifica se 'Tipo' existe na linha e corresponde ao tipo desejado
         if linha.get('Tipo', '').strip().lower() == tipo.lower():
             cat = linha['Categoria'].strip()
             subcat = linha['Subcategoria'].strip() if linha['Subcategoria'] else ""
@@ -58,6 +59,7 @@ def salvar_transacao(aba, data, tipo, categoria, subcategoria, descricao, valor)
 # -------------------------------
 # Adicionar categoria ou subcategoria na aba Categorias
 # -------------------------------
+# Adicionado 'tipo_categoria' para garantir que a categoria seja salva com seu tipo
 def adicionar_categoria(aba_categorias, categoria, tipo_categoria):
     aba_categorias.append_row([categoria, "", tipo_categoria])
 
@@ -135,43 +137,67 @@ elif aba_atual == "Dashboard":
         df['Valor'] = pd.to_numeric(df['Valor'])
 
         # Filtros
-        anos = sorted(df['Ano'].unique())
-        meses = sorted(df['Mês'].unique())
+        anos = sorted(df['Ano'].unique(), reverse=True) # Exibir anos em ordem decrescente
+        meses_disponiveis = sorted(df['Mês'].unique())
+        nomes_meses_disponiveis = [nomes_meses_pt[m] for m in meses_disponiveis]
+
         with st.expander("🔍 Filtros"):
             col1, col2, col3 = st.columns([3, 3, 2])
             with col1:
+                # Usar st.session_state para manter o estado do filtro após o rerun
+                if 'ano_filtro' not in st.session_state:
+                    st.session_state['ano_filtro'] = 'Todos'
                 ano_filtro = st.selectbox("Ano", ['Todos'] + anos, index=0, key="ano_filtro")
+
             with col2:
-                nomes_meses = ['Todos'] + [nomes_meses_pt[m] for m in meses]
-                mes_filtro = st.selectbox("Mês", nomes_meses, index=0, key="mes_filtro")
+                if 'mes_filtro' not in st.session_state:
+                    st.session_state['mes_filtro'] = 'Todos'
+                mes_filtro = st.selectbox("Mês", ['Todos'] + nomes_meses_disponiveis, index=0, key="mes_filtro")
+
             with col3:
+                # Adicionado um espaço vertical para alinhar o botão
+                st.write("") # Adiciona um pequeno espaço
                 if st.button("❌ Limpar filtros"):
                     st.session_state['ano_filtro'] = 'Todos'
                     st.session_state['mes_filtro'] = 'Todos'
                     st.experimental_rerun()
 
-        # Aplicar filtros
-        df_filtrado = df.copy() # Criar uma cópia para aplicar filtros e manter o df original
+
+        # Aplicar filtros ao DataFrame
+        df_filtrado = df.copy()
         if st.session_state['ano_filtro'] != 'Todos':
             df_filtrado = df_filtrado[df_filtrado['Ano'] == st.session_state['ano_filtro']]
         if st.session_state['mes_filtro'] != 'Todos':
-            num_mes = [k for k, v in nomes_meses_pt.items() if v == st.session_state['mes_filtro']][0]
-            df_filtrado = df_filtrado[df_filtrado['Mês'] == num_mes]
+            # Mapear o nome do mês de volta para o número do mês
+            num_mes = [k for k, v in nomes_meses_pt.items() if v == st.session_state['mes_filtro']]
+            if num_mes: # Garantir que o mês foi encontrado
+                df_filtrado = df_filtrado[df_filtrado['Mês'] == num_mes[0]]
+            else:
+                st.warning("Mês selecionado não encontrado nos dados. Verifique o filtro.")
+                df_filtrado = pd.DataFrame() # Esvazia o dataframe se o mês não for válido
 
-        # Métricas principais
-        total_receitas = df_filtrado[df_filtrado['Tipo'] == 'Receita']['Valor'].sum()
-        total_despesas = df_filtrado[df_filtrado['Tipo'] == 'Despesa']['Valor'].sum()
-        saldo = total_receitas - total_despesas
 
+        # --- Métricas principais ---
         st.subheader("📌 Visão Geral")
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Receitas", f"R$ {total_receitas:,.2f}")
-        col2.metric("Despesas", f"R$ {total_despesas:,.2f}")
-        col3.metric("Saldo", f"R$ {saldo:,.2f}")
+        if not df_filtrado.empty:
+            total_receitas = df_filtrado[df_filtrado['Tipo'] == 'Receita']['Valor'].sum()
+            total_despesas = df_filtrado[df_filtrado['Tipo'] == 'Despesa']['Valor'].sum()
+            saldo = total_receitas - total_despesas
+
+            col1, col2, col3 = st.columns(3)
+            col1.metric("Receitas", f"R$ {total_receitas:,.2f}")
+            col2.metric("Despesas", f"R$ {total_despesas:,.2f}")
+            col3.metric("Saldo", f"R$ {saldo:,.2f}")
+        else:
+            st.info("Sem dados para o filtro selecionado. Ajuste os filtros ou adicione transações.")
+            total_receitas = 0
+            total_despesas = 0
+            saldo = 0
+
 
         st.divider()
 
-        # 🔹 Gráfico de barras horizontais (Receitas por Categoria)
+        # --- Gráfico de barras horizontais (Receitas por Categoria) ---
         st.subheader("💰 Receitas por Categoria")
         receitas_cat = df_filtrado[df_filtrado['Tipo'] == 'Receita'].groupby("Categoria")["Valor"].sum().reset_index()
         if not receitas_cat.empty:
@@ -184,7 +210,7 @@ elif aba_atual == "Dashboard":
         else:
             st.info("Sem receitas para este filtro.")
 
-        # 🔹 Gráfico de barras horizontais (Despesas por Categoria)
+        # --- Gráfico de barras horizontais (Despesas por Categoria) ---
         st.subheader("💸 Despesas por Categoria")
         despesas_cat = df_filtrado[df_filtrado['Tipo'] == 'Despesa'].groupby("Categoria")["Valor"].sum().reset_index()
         if not despesas_cat.empty:
@@ -199,24 +225,30 @@ elif aba_atual == "Dashboard":
 
         st.divider()
 
-        # 🔹 Linha do tempo: saldo por mês
+        # --- Linha do tempo: saldo por mês ---
         st.subheader("📈 Evolução Mensal do Saldo")
-        df_saldo = df_filtrado.groupby(['Ano', 'Mês']).agg(
+        # Recalcular df_saldo com base em df_filtrado
+        df_saldo = df_filtrado.groupby(['Ano', 'Mês'], observed=True).agg( # `observed=True` para Pandas >= 2.0
             Receita=('Valor', lambda x: x[df_filtrado.loc[x.index, 'Tipo'] == 'Receita'].sum()),
             Despesa=('Valor', lambda x: x[df_filtrado.loc[x.index, 'Tipo'] == 'Despesa'].sum())
         ).reset_index()
         df_saldo['Saldo'] = df_saldo['Receita'] - df_saldo['Despesa']
-        df_saldo['Data'] = pd.to_datetime(df_saldo.rename(columns={'Ano':'year', 'Mês':'month'}).assign(day=1)[['year','month','day']])
+        # Usar o nome do mês para facilitar a visualização no gráfico
+        df_saldo['Nome Mês'] = df_saldo['Mês'].map(nomes_meses_pt)
+        # Criar uma data fictícia para o eixo x
+        df_saldo['Data_Eixo'] = pd.to_datetime(df_saldo['Ano'].astype(str) + '-' + df_saldo['Mês'].astype(str) + '-01')
 
         if not df_saldo.empty:
             chart_linha = alt.Chart(df_saldo).transform_fold(
                 ['Receita', 'Despesa', 'Saldo'],
                 as_=['Tipo', 'Valor']
             ).mark_line(point=True).encode(
-                x=alt.X('Data:T', title='Data'),
+                x=alt.X('Data_Eixo:T', title='Data', axis=alt.Axis(format="%b/%Y")), # Formatar o eixo para Mês/Ano
                 y=alt.Y('Valor:Q', title='Valor (R$)'),
-                color='Tipo:N',
-                tooltip=["Tipo:N", alt.Tooltip("Valor", format=".2f"), "Data:T"]
+                color=alt.Color('Tipo:N',
+                                scale=alt.Scale(domain=['Receita', 'Despesa', 'Saldo'],
+                                                range=['green', 'red', 'blue'])),
+                tooltip=["Tipo:N", alt.Tooltip("Valor", format=".2f"), alt.Tooltip("Data_Eixo", format="%b/%Y", title="Mês/Ano")]
             ).properties(height=400)
             st.altair_chart(chart_linha, use_container_width=True)
         else:
@@ -224,7 +256,7 @@ elif aba_atual == "Dashboard":
 
         st.divider()
 
-        # 🔹 Subcategorias
+        # --- Subcategorias ---
         st.subheader("📂 Receitas por Subcategoria")
         receitas_sub = df_filtrado[df_filtrado['Tipo'] == 'Receita'].groupby("Subcategoria")["Valor"].sum().reset_index()
         if not receitas_sub.empty:
@@ -251,7 +283,7 @@ elif aba_atual == "Dashboard":
 
         st.divider()
 
-        # 🔹 Tabela de Todas as Movimentações
+        # --- Tabela de Todas as Movimentações ---
         st.subheader("📋 Todas as Movimentações")
         if not df_filtrado.empty:
             # Selecionar e reordenar as colunas para a exibição na tabela
@@ -259,7 +291,7 @@ elif aba_atual == "Dashboard":
             df_exibicao = df_filtrado[colunas_tabela].copy()
             df_exibicao['Data'] = df_exibicao['Data'].dt.strftime("%d/%m/%Y")
             df_exibicao['Valor'] = df_exibicao['Valor'].apply(lambda x: f"R$ {x:,.2f}")
-            st.dataframe(df_exibicao, hide_index=True)
+            st.dataframe(df_exibicao, hide_index=True, use_container_width=True) # use_container_width para melhor visualização
         else:
             st.info("Nenhuma movimentação para este filtro.")
 
@@ -277,13 +309,13 @@ elif aba_atual == "Gerenciar categorias":
     if st.button("Adicionar Categoria"):
         nova_categoria = nova_categoria.strip()
         if nova_categoria:
-            # Certificar-se de que a coluna 'Tipo' existe na planilha 'Categorias'
-            # Isso requer uma pequena modificação na sua planilha Google Sheets,
-            # adicionando uma coluna 'Tipo' (Receita/Despesa)
-            # Para o código funcionar corretamente, sua planilha 'Categorias' deve ter as colunas: Categoria, Subcategoria, Tipo
-            adicionar_categoria(aba_categorias, nova_categoria, tipo_categoria)
-            st.success(f"Categoria '{nova_categoria}' adicionada como {tipo_categoria}!")
-            st.experimental_rerun()
+            # Verificar se a categoria já existe para o tipo selecionado
+            if nova_categoria not in categorias:
+                adicionar_categoria(aba_categorias, nova_categoria, tipo_categoria)
+                st.success(f"Categoria '{nova_categoria}' adicionada como {tipo_categoria}!")
+                st.experimental_rerun()
+            else:
+                st.error("Categoria já existe para este tipo.")
         else:
             st.error("Digite uma categoria válida.")
 
@@ -300,6 +332,7 @@ elif aba_atual == "Gerenciar categorias":
         if st.button("Adicionar Subcategoria"):
             nova_subcategoria = nova_subcategoria.strip()
             if nova_subcategoria:
+                # Verificar se a subcategoria já existe para essa categoria
                 if nova_subcategoria not in categorias[categoria_para_sub]:
                     adicionar_subcategoria(aba_categorias, categoria_para_sub, nova_subcategoria, tipo_categoria)
                     st.success(f"Subcategoria '{nova_subcategoria}' adicionada à categoria '{categoria_para_sub}'!")
